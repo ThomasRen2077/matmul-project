@@ -21,18 +21,15 @@ void basic_dgemm(const int lda, const int M, const int N, const int K,
 {
     int i, j, k;
 
-    for (i = 0; i < M; ++i) {
+    for (j = 0; j < N; ++j) {
 
-        for (j = 0; j < N; ++j) {
+        for (k = 0; k < K; ++k) {
 
-            double cij = C[j * lda + i];
+            for (i = 0; i < M; ++i) {
 
-            for (k = 0; k < K; ++k) {
-
-                cij += A[k * lda + i] * B[j * lda + k];
+                C[j * lda + i] += A[k * lda + i] * B[j * lda + k];
             }
 
-            C[j * lda + i] = cij;
         }
     }
 }
@@ -60,11 +57,11 @@ void multi_level_block(const int lda, const double *A, const double *B, double *
 
     int i, j, k;
 
-    for (i = 0; i < M; i += L1_SIZE) {
+    for (j = 0; j < N; j += L1_SIZE) {
 
-        for (j = 0; j < N; j += L1_SIZE) {
+        for (k = 0; k < K; k += L1_SIZE) {
 
-            for (k = 0; k < K; k += L1_SIZE) {
+            for (i = 0; i < M; i += L1_SIZE) {
 
                 do_block(lda, M, N, K, A + l2_i + l2_k * lda, B + l2_k + l2_j * lda, C + l2_i + l2_j * lda, i, j, k);
 
@@ -80,11 +77,11 @@ void square_dgemm(const int lda, const double *A, const double *B, double *C)
 {   
     int i, j, k;
 
-    for (i = 0; i < lda; i += L2_SIZE) {
+    for (j = 0; j < lda; j += L2_SIZE) {
 
-        for (j = 0; j < lda; j += L2_SIZE) {
+        for (k = 0; k < lda; k += L2_SIZE) {
 
-            for (k = 0; k < lda; k += L2_SIZE) {
+            for (i = 0; i < lda; i += L2_SIZE) {
 
                 multi_level_block(lda, A, B, C, i, j, k);
 
