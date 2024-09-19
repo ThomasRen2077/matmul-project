@@ -24,10 +24,12 @@ void basic_dgemm(const int lda, const int M, const int N, const int K,
     for (j = 0; j < N; ++j) {
 
         for (k = 0; k < K; ++k) {
+            
+            double bjk = B[j * lda + k];
 
             for (i = 0; i < M; ++i) {
-
-                C[j * lda + i] += A[k * lda + i] * B[j * lda + k];
+                
+                C[j * lda + i] += A[k * lda + i] * bjk;
             }
 
         }
