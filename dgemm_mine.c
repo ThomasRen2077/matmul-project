@@ -5,7 +5,7 @@ const char* dgemm_desc = "My awesome dgemm.";
 #endif
 
 #ifndef L2_SIZE
-#define L2_SIZE ((int) 264)
+#define L2_SIZE ((int) 280)
 #endif
 
 /*
