@@ -17,14 +17,25 @@ const char* dgemm_desc = "My awesome dgemm.";
   lda is the leading dimension of the matrix (the M of square_dgemm).
 */
 
-void copy_aligned_block(const int lda, const int M, const int N, const double *src, double *dst)
+void copy_aligned_block(const int lda, const int AllOC_SIZE, const int M, const int N, const double *src, double *dst)
 {
     int i, j;
 
-    // Copy block row by row, but use L2_SIZE for the dst stride
+    // Copy block row by row, but use AllOC_SIZE for the dst stride
     for (j = 0; j < N; ++j) {
         for (i = 0; i < M; ++i) {
-            dst[j * M + i] = src[j * lda + i]; // Copy each element from src to aligned buffer
+            dst[j * AllOC_SIZE + i] = src[j * lda + i]; // Copy each element from src to aligned buffer
+        }
+
+        for (i = M; i < AllOC_SIZE; ++i) {
+             dst[j * AllOC_SIZE + i] = 0.0;            // Zero padding for the remaining row
+        }
+    }
+
+    // Zero padding for the remaining columns
+    for (j = N; j < AllOC_SIZE; ++j) {
+        for (i = 0; i < AllOC_SIZE; ++i) {
+            dst[j * AllOC_SIZE + i] = 0.0;
         }
     }
 
@@ -33,7 +44,7 @@ void copy_aligned_block(const int lda, const int M, const int N, const double *s
 
 
 
-void basic_dgemm(const int lda, const int M, const int N, const int K, const int MM, const int NN, const int KK,
+void basic_dgemm(const int lda, const int AllOC_SIZE, const int M, const int N, const int K, const int MM, const int NN, const int KK,
                  const double *A, const double *B, double *C)
 {
     int i, j, k;
@@ -42,18 +53,18 @@ void basic_dgemm(const int lda, const int M, const int N, const int K, const int
 
         for (k = 0; k < KK; ++k) {
             
-            double bjk = B[j * K + k];
+            double bjk = B[j * AllOC_SIZE + k];
 
             for (i = 0; i < MM; ++i) {
                 
-                C[j * lda + i] += A[k * M + i] * bjk;
+                C[j * lda + i] += A[k * AllOC_SIZE + i] * bjk;
             }
 
         }
     }
 }
 
-void do_block(const int lda, const int M, const int N, const int K,
+void do_block(const int lda, const int AllOC_SIZE, const int M, const int N, const int K,
               const double *A, const double *B, double *C,
               const int l1_i, const int l1_j, const int l1_k)
 {
@@ -63,12 +74,12 @@ void do_block(const int lda, const int M, const int N, const int K,
 
     const int KK = (l1_k + L1_SIZE > K? K - l1_k : L1_SIZE);
 
-    basic_dgemm(lda, M, N, K, MM, NN, KK,
-                A + l1_i + l1_k * M, B + l1_k + l1_j * K, C + l1_i + l1_j * lda);
+    basic_dgemm(lda, AllOC_SIZE, M, N, K, MM, NN, KK,
+                A + l1_i + l1_k * AllOC_SIZE, B + l1_k + l1_j * AllOC_SIZE, C + l1_i + l1_j * lda);
 
 }
 
-void multi_level_block(const int lda, const int M, const int N, const int K, 
+void multi_level_block(const int lda, const int AllOC_SIZE, const int M, const int N, const int K, 
                         const double *aligned_A, const double *aligned_B, double *C, 
                         const int l2_i, const int l2_j, const int l2_k) 
 {
@@ -81,7 +92,7 @@ void multi_level_block(const int lda, const int M, const int N, const int K,
 
             for (k = 0; k < K; k += L1_SIZE) {
 
-                do_block(lda, M, N, K, aligned_A, aligned_B, C + l2_i + l2_j * lda, i, j, k);
+                do_block(lda, AllOC_SIZE, M, N, K, aligned_A, aligned_B, C + l2_i + l2_j * lda, i, j, k);
 
             }
 
@@ -95,17 +106,14 @@ void square_dgemm(const int lda, const double *A, const double *B, double *C)
 {   
     int i, j, k;
 
-    double* aligned_A;
-    double* aligned_B;
+    int AllOC_SIZE = L2_SIZE;
 
     if(lda < L2_SIZE) {
-        aligned_A = (double*) _mm_malloc(lda * lda * sizeof(double), 64);
-        aligned_B = (double*) _mm_malloc(lda * lda * sizeof(double), 64);
+        AllOC_SIZE = lda % 8? ((lda / 8 + 1) * 8): lda;
     }
-    else {
-        aligned_A = (double*) _mm_malloc(L2_SIZE * L2_SIZE * sizeof(double), 64);
-        aligned_B = (double*) _mm_malloc(L2_SIZE * L2_SIZE * sizeof(double), 64);
-    }
+
+    double* aligned_A = (double*) _mm_malloc(AllOC_SIZE * AllOC_SIZE * sizeof(double), 64);
+    double* aligned_B = (double*) _mm_malloc(AllOC_SIZE * AllOC_SIZE * sizeof(double), 64);
 
     for (j = 0; j < lda; j += L2_SIZE) {
 
@@ -119,10 +127,10 @@ void square_dgemm(const int lda, const double *A, const double *B, double *C)
 
                 const int K = (k + L2_SIZE > lda? lda - k : L2_SIZE);
 
-                copy_aligned_block(lda, M, K, A + i + k * lda, aligned_A);
-                copy_aligned_block(lda, K, N, B + k + j * lda, aligned_B);
+                copy_aligned_block(lda, AllOC_SIZE, M, K, A + i + k * lda, aligned_A);
+                copy_aligned_block(lda, AllOC_SIZE, K, N, B + k + j * lda, aligned_B);
 
-                multi_level_block(lda, M, N, K, aligned_A, aligned_B, C, i, j, k);
+                multi_level_block(lda, AllOC_SIZE, M, N, K, aligned_A, aligned_B, C, i, j, k);
 
             }
 
