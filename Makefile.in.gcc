@@ -10,9 +10,9 @@ LD=gfortran
 PYTHON=python3
 
 # Compiler optimization flags.  You will definitely want to play with these!
-OPTFLAGS = -O3 -march=native -floop-block
+OPTFLAGS = -O3 -march=native -floop-block -mavx512f -mavx2 -mabm -mbmi -mbmi2 -mfma
 CFLAGS = 
-FFLAGS =
+FFLAGS = 
 LDFLAGS = -fopenmp
 
 # Add -DDEBUG_RUN to CPPFLAGS to cut down on the cases.
